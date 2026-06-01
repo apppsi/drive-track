@@ -4,8 +4,11 @@ import PinGuard from '../components/PinGuard';
 import { supabase } from '../lib/supabase';
 import { 
   DollarSign, Fuel, Plus, Coffee, Repeat, X, 
-  CreditCard, Edit2, Trash2, ChevronLeft, ChevronRight, CalendarSearch
+  CreditCard, Edit2, Trash2, ChevronLeft, ChevronRight, CalendarSearch, TrendingUp, List, Clock, ArrowRight
 } from 'lucide-react';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 type Transaction = { 
   id: string; 
@@ -17,47 +20,54 @@ type Transaction = {
   desc?: string; 
   rawDate: string; 
   status?: string;
-  invoiceMonth: string; // Ex: '2026-06'
+  invoiceMonth: string; 
 };
 
 type DbAccount = { id: string; name: string; };
 
 export default function Dashboard() {
+  const [fuelPrice, setFuelPrice] = useState<number | string>(3.89);
+  const [fuelType, setFuelType] = useState<'alcool' | 'gasolina'>('alcool');
+  const [efficiencyAlcool, setEfficiencyAlcool] = useState<number | string>(9);
+  const [efficiencyGasolina, setEfficiencyGasolina] = useState<number | string>(13);
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [dbAccounts, setDbAccounts] = useState<DbAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [editModalTx, setEditModalTx] = useState<Transaction | null>(null);
+  const [viewMode, setViewMode] = useState<'dashboard' | 'reports' | 'future'>('dashboard');
 
   const [amount, setAmount] = useState('');
   const [desc, setDesc] = useState('');
   const [card, setCard] = useState('nubank');
   const [installments, setInstallments] = useState('1');
   const [incomeType, setIncomeType] = useState<'uber' | 'aporte'>('uber');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'nubank' | 'c6' | 'outros'>('all');
+  
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [editType, setEditType] = useState<'despesa' | 'recorrente'>('despesa');
 
-  // NAVEGAÇÃO ESTILO CARTÃO DE CRÉDITO
-  const [activeMonthStr, setActiveMonthStr] = useState(''); // '2026-06'
+  const [activeMonthStr, setActiveMonthStr] = useState(''); 
   const [customMonthPicker, setCustomMonthPicker] = useState(false);
 
-  // Inicializa o mês atual
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString('pt-BR');
+
   useEffect(() => {
-    const today = new Date();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const yyyy = today.getFullYear();
     setActiveMonthStr(`${yyyy}-${mm}`);
   }, []);
 
-  // Lógica de Virada de Cartão (Dias 17 e 14)
   const getInvoiceMonth = (dateStr: string, thresholdDay: number) => {
     const [yStr, mStr, dStr] = dateStr.split('T')[0].split('-');
     let y = parseInt(yStr, 10);
     let m = parseInt(mStr, 10);
     const d = parseInt(dStr, 10);
 
-    if (d > thresholdDay) {
+    if (d >= thresholdDay) {
         m += 1;
         if (m > 12) { m = 1; y += 1; }
     }
@@ -82,15 +92,16 @@ export default function Dashboard() {
     }
     setDbAccounts(currentAccounts);
 
-    const { data: expenses } = await supabase.from('expenses').select('*');
-    const { data: workDays } = await supabase.from('work_days').select('*');
+    const { data: expenses } = await supabase.from('expenses').select('id, description, amount, category, installments_total, due_date, status, accounts(name)');
+    const { data: workDays } = await supabase.from('work_days').select('id, extra_earnings, aporte, date, fuel_price');
 
     const formattedTxs: Transaction[] = [];
 
     if (expenses) {
       expenses.forEach(e => {
-        const acc = currentAccounts.find(a => a.id === e.account_id);
-        const cardName = acc?.name.toLowerCase().includes('nubank') ? 'nubank' : 'c6';
+        const accountData: any = e.accounts;
+        const accountName = Array.isArray(accountData) ? accountData[0]?.name : accountData?.name;
+        const cardName = accountName?.toLowerCase().includes('nubank') ? 'nubank' : 'c6';
         const threshold = cardName === 'nubank' ? 17 : 14;
         
         formattedTxs.push({
@@ -103,17 +114,10 @@ export default function Dashboard() {
 
     if (workDays) {
       workDays.forEach(w => {
-        // Ganhos e abastecimentos no débito fecham no dia 31 (mês calendário)
         const invMonth = getInvoiceMonth(w.date, 31);
-        if(w.extra_earnings > 0) formattedTxs.push({
-            id: `wdg_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'ganho', amount: Number(w.extra_earnings), desc: 'Ganhos Uber', rawDate: w.date, invoiceMonth: invMonth
-        });
-        if(w.aporte > 0) formattedTxs.push({
-            id: `wda_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'aporte', amount: Number(w.aporte), desc: 'Aporte Externo', rawDate: w.date, invoiceMonth: invMonth
-        });
-        if(w.fuel_price > 0) formattedTxs.push({
-            id: `wdc_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'combustivel', amount: Number(w.fuel_price), desc: 'Abastecimento', rawDate: w.date, invoiceMonth: invMonth
-        });
+        if(w.extra_earnings > 0) formattedTxs.push({ id: `wdg_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'ganho', amount: Number(w.extra_earnings), desc: 'Ganhos Uber', rawDate: w.date, invoiceMonth: invMonth });
+        if(w.aporte > 0) formattedTxs.push({ id: `wda_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'aporte', amount: Number(w.aporte), desc: 'Aporte Externo', rawDate: w.date, invoiceMonth: invMonth });
+        if(w.fuel_price > 0) formattedTxs.push({ id: `wdc_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'combustivel', amount: Number(w.fuel_price), desc: 'Abastecimento', rawDate: w.date, invoiceMonth: invMonth });
       });
     }
 
@@ -192,8 +196,6 @@ export default function Dashboard() {
       } else {
         const acc = dbAccounts.find(a => a.name.toLowerCase().includes(card));
         const numInst = editType === 'recorrente' ? 120 : Number(installments);
-        
-        // MATEMÁTICA: O valor digitado na edição é o TOTAL se for parcelado. Se for manter 1x ou assinatura, é ele mesmo.
         const baseAmount = editType === 'despesa' && numInst > 1 ? Number(amount) / numInst : Number(amount);
         
         if (editModalTx.desc?.match(/\(\d+\/\d+\)$/)) {
@@ -236,22 +238,36 @@ export default function Dashboard() {
 
     try {
       if (activeModal === 'pagamento') {
-        const threshold = card === 'nubank' ? 17 : 14;
         const acc = dbAccounts.find(a => a.name.toLowerCase().includes(card));
+        const txsToPay = transactions.filter(t => t.card === card && t.type !== 'ganho' && t.type !== 'aporte' && t.status === 'pendente' && t.invoiceMonth === activeMonthStr);
         
-        // Dá baixa em tudo do cartão X no mês selecionado
-        const txsToPay = transactions.filter(t => t.card === card && t.status === 'pendente' && t.invoiceMonth === activeMonthStr);
-        
+        const invoiceTotal = txsToPay.reduce((acc, t) => acc + t.amount, 0);
+        const paidValue = Number(amount);
+
         for (const t of txsToPay) {
            await supabase.from('expenses').update({ status: 'pago' }).eq('id', t.dbId);
         }
-        alert("Faturas do mês quitadas com sucesso!");
+
+        if (paidValue < invoiceTotal) {
+          const rolloverAmount = invoiceTotal - paidValue;
+          const threshold = card === 'nubank' ? 17 : 14;
+          const [yStr, mStr] = activeMonthStr.split('-');
+          
+          const nextDateStr = `${yStr}-${mStr}-${String(threshold + 2).padStart(2, '0')}`;
+          
+          await supabase.from('expenses').insert({
+            description: `Restante Fatura ${card.toUpperCase()}`,
+            amount: rolloverAmount, installments_total: 1, account_id: acc!.id,
+            due_date: nextDateStr, category: 'despesa', status: 'pendente'
+          });
+          alert(`Pagamento parcial. R$ ${rolloverAmount.toFixed(2)} rolados para a próxima fatura.`);
+        } else {
+           alert("Fatura quitada com sucesso!");
+        }
         
       } else if (activeModal === 'despesa' || activeModal === 'recorrente' || activeModal === 'combustivel') {
         let acc = dbAccounts.find(a => a.name.toLowerCase().includes(card));
         const numInst = activeModal === 'recorrente' ? 120 : (activeModal === 'combustivel' ? 1 : Number(installments));
-        
-        // MATEMÁTICA: Pega o valor total digitado e DIVIDE pelas parcelas.
         const baseAmount = activeModal === 'despesa' && numInst > 1 ? Number(amount) / numInst : Number(amount); 
         const baseDesc = activeModal === 'combustivel' ? `Abastecimento` : desc.trim();
 
@@ -282,7 +298,6 @@ export default function Dashboard() {
     } catch (err) { alert("Falha: " + (err as Error).message); }
   };
 
-  // Navegação de Meses
   const changeMonth = (offset: number) => {
     if(!activeMonthStr) return;
     const [y, m] = activeMonthStr.split('-').map(Number);
@@ -297,108 +312,216 @@ export default function Dashboard() {
     return `${months[parseInt(m)-1]} ${y}`;
   };
 
-  // Filtra as transações baseadas EXATAMENTE no mês que o usuário está olhando
-  const currentViewTransactions = transactions.filter(t => t.invoiceMonth === activeMonthStr);
+  const getMonthlyEvolution = () => {
+    const monthly: Record<string, { name: string; sortKey: number; Uber: number; Aportes: number; Despesas: number }> = {};
+    transactions.forEach(t => {
+      const [y, m] = t.invoiceMonth.split('-');
+      const sortKey = parseInt(y) * 100 + parseInt(m);
+      const name = `${['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(m)-1]} ${y.slice(2)}`;
+      if (!monthly[t.invoiceMonth]) monthly[t.invoiceMonth] = { name, sortKey, Uber: 0, Aportes: 0, Despesas: 0 };
+      if (t.type === 'ganho') monthly[t.invoiceMonth].Uber += t.amount;
+      else if (t.type === 'aporte') monthly[t.invoiceMonth].Aportes += t.amount;
+      else monthly[t.invoiceMonth].Despesas += t.amount;
+    });
+    return Object.values(monthly).sort((a, b) => a.sortKey - b.sortKey).slice(-6);
+  };
 
-  const totalNubank = currentViewTransactions.filter(t => t.card === 'nubank' && t.type !== 'ganho' && t.type !== 'aporte').reduce((acc, t) => acc + t.amount, 0);
-  const totalC6 = currentViewTransactions.filter(t => t.card === 'c6' && t.type !== 'ganho' && t.type !== 'aporte').reduce((acc, t) => acc + t.amount, 0);
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('report-content');
+    if (!element) return;
+    const canvas = await html2canvas(element, { backgroundColor: '#020617', scale: 2 });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    pdf.addImage(imgData, 'PNG', 0, 10, pdf.internal.pageSize.getWidth(), (canvas.height * pdf.internal.pageSize.getWidth()) / canvas.width);
+    pdf.save(`DriveTrack-Relatorio-${formattedDate.replace(/\//g, '-')}.pdf`);
+  };
+
+  // Filtro Global da View Atual
+  const currentViewTransactions = transactions.filter(t => t.invoiceMonth === activeMonthStr);
+  const pendingNubank = currentViewTransactions.filter(t => t.card === 'nubank' && t.type !== 'ganho' && t.type !== 'aporte' && t.status === 'pendente').reduce((acc, t) => acc + t.amount, 0);
+  const pendingC6 = currentViewTransactions.filter(t => t.card === 'c6' && t.type !== 'ganho' && t.type !== 'aporte' && t.status === 'pendente').reduce((acc, t) => acc + t.amount, 0);
   const totalUber = currentViewTransactions.filter(t => t.type === 'ganho').reduce((acc, t) => acc + t.amount, 0);
   const totalAporte = currentViewTransactions.filter(t => t.type === 'aporte').reduce((acc, t) => acc + t.amount, 0);
+
+  const remainingTargetReais = Math.max((pendingNubank + pendingC6) - (totalUber + totalAporte), 0);
+  const numFuelPrice = Number(fuelPrice) || 0;
+  const currentEfficiency = fuelType === 'alcool' ? (Number(efficiencyAlcool) || 9) : (Number(efficiencyGasolina) || 13);
+  const netProfitPerKm = numFuelPrice > 0 && currentEfficiency > 0 ? 2.00 - (numFuelPrice / currentEfficiency) : 0;
+  const requiredKm = remainingTargetReais > 0 && netProfitPerKm > 0 ? Math.ceil(remainingTargetReais / netProfitPerKm) : 0;
+
+  const filteredHistory = currentViewTransactions.filter(t => {
+    if (historyFilter === 'nubank' && t.card !== 'nubank') return false;
+    if (historyFilter === 'c6' && t.card !== 'c6') return false;
+    if (historyFilter === 'outros' && t.card) return false;
+    return true;
+  });
 
   return (
     <PinGuard>
       <main className="min-h-screen bg-slate-950 text-slate-100 pb-24 font-sans max-w-md mx-auto">
-        
-        {/* HEADER CARTÃO DE CRÉDITO */}
         <header className="bg-slate-900 border-b border-slate-800 p-6 pt-10 rounded-b-3xl shadow-xl relative">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-xl font-bold text-slate-50 tracking-tight">Drive & Track</h1>
-            <button onClick={() => setCustomMonthPicker(!customMonthPicker)} className="p-2 bg-slate-800 rounded-full text-blue-400">
-              <CalendarSearch size={18} />
-            </button>
-          </div>
-
-          {/* CARROSSEL DE MESES */}
-          <div className="flex justify-between items-center bg-slate-950 rounded-full p-1 border border-slate-800 mb-6">
-            <button onClick={() => changeMonth(-1)} className="p-2 text-slate-400 hover:text-white"><ChevronLeft size={20}/></button>
-            <span className="font-bold text-blue-400 uppercase tracking-widest text-sm">{getMonthLabel(activeMonthStr)}</span>
-            <button onClick={() => changeMonth(1)} className="p-2 text-slate-400 hover:text-white"><ChevronRight size={20}/></button>
-          </div>
-
-          {customMonthPicker && (
-            <div className="absolute top-20 right-6 bg-slate-800 p-3 rounded-lg border border-slate-700 z-50 shadow-2xl flex gap-2">
-              <input type="month" value={activeMonthStr} onChange={(e) => { setActiveMonthStr(e.target.value); setCustomMonthPicker(false); }} className="bg-slate-950 text-white p-2 rounded outline-none" />
+            <div className="flex gap-2">
+              <button onClick={() => setCustomMonthPicker(!customMonthPicker)} className="p-2 bg-slate-800 rounded-full text-blue-400"><CalendarSearch size={18} /></button>
+              <button onClick={() => setViewMode('reports')} className={`p-2 rounded-full transition-colors ${viewMode === 'reports' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}><BarChart3 size={18} /></button>
+              <button onClick={() => setViewMode('dashboard')} className={`p-2 rounded-full transition-colors ${viewMode === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}><List size={18} /></button>
             </div>
+          </div>
+
+          {viewMode !== 'reports' && (
+            <>
+              <div className="flex justify-between items-center bg-slate-950 rounded-full p-1 border border-slate-800 mb-6">
+                <button onClick={() => changeMonth(-1)} className="p-2 text-slate-400 hover:text-white"><ChevronLeft size={20}/></button>
+                <span className="font-bold text-blue-400 uppercase tracking-widest text-sm">{getMonthLabel(activeMonthStr)}</span>
+                <button onClick={() => changeMonth(1)} className="p-2 text-slate-400 hover:text-white"><ChevronRight size={20}/></button>
+              </div>
+
+              {customMonthPicker && (
+                <div className="absolute top-20 right-6 bg-slate-800 p-3 rounded-lg border border-slate-700 z-50 shadow-2xl flex gap-2">
+                  <input type="month" value={activeMonthStr} onChange={(e) => { setActiveMonthStr(e.target.value); setCustomMonthPicker(false); }} className="bg-slate-950 text-white p-2 rounded outline-none" />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#8a05be]/10 border border-[#8a05be]/30 p-4 rounded-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-[#8a05be]"></div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fatura Nubank</p>
+                  <p className="text-xl font-bold text-[#8a05be]">R$ {pendingNubank.toFixed(2)}</p>
+                  <p className="text-[9px] text-slate-500 mt-1">Corta dia 17</p>
+                </div>
+                <div className="bg-slate-800/50 border border-slate-700/50 p-4 rounded-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-slate-500"></div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fatura C6 Bank</p>
+                  <p className="text-xl font-bold text-slate-300">R$ {pendingC6.toFixed(2)}</p>
+                  <p className="text-[9px] text-slate-500 mt-1">Corta dia 14</p>
+                </div>
+              </div>
+              <div className="mt-3 bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex justify-between items-center">
+                 <div>
+                   <p className="text-[10px] text-emerald-400/80 font-bold uppercase mb-1">Entradas Registradas</p>
+                   <p className="text-lg font-bold text-emerald-400">R$ {(totalUber + totalAporte).toFixed(2)}</p>
+                 </div>
+                 <div className="text-right">
+                    <p className="text-[10px] text-slate-500 uppercase">Aportes</p>
+                    <p className="text-sm font-bold text-amber-400">R$ {totalAporte.toFixed(2)}</p>
+                 </div>
+              </div>
+            </>
           )}
-
-          {/* RESUMO DO MÊS SELECIONADO */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[#8a05be]/10 border border-[#8a05be]/30 p-4 rounded-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-[#8a05be]"></div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fatura Nubank</p>
-              <p className="text-xl font-bold text-[#8a05be]">R$ {totalNubank.toFixed(2)}</p>
-              <p className="text-[9px] text-slate-500 mt-1">Corta dia 17</p>
-            </div>
-            <div className="bg-slate-800/50 border border-slate-700/50 p-4 rounded-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-slate-500"></div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fatura C6 Bank</p>
-              <p className="text-xl font-bold text-slate-300">R$ {totalC6.toFixed(2)}</p>
-              <p className="text-[9px] text-slate-500 mt-1">Corta dia 14</p>
-            </div>
-          </div>
-          <div className="mt-3 bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex justify-between items-center">
-             <div>
-               <p className="text-[10px] text-emerald-400/80 font-bold uppercase mb-1">Entradas (Uber + Aporte)</p>
-               <p className="text-lg font-bold text-emerald-400">R$ {(totalUber + totalAporte).toFixed(2)}</p>
-             </div>
-             <div className="text-right">
-                <p className="text-[10px] text-slate-500 uppercase">Aporte</p>
-                <p className="text-sm font-bold text-amber-400">R$ {totalAporte.toFixed(2)}</p>
-             </div>
-          </div>
         </header>
 
-        {/* LISTA DE LANÇAMENTOS DO MÊS */}
-        <div className="p-4 mt-2">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 pl-2">Lançamentos de {getMonthLabel(activeMonthStr)}</h3>
-          
-          <div className="space-y-3">
-            {currentViewTransactions.map(t => (
-              <div key={t.id} className="bg-slate-900 border border-slate-800/50 p-4 rounded-2xl flex justify-between items-center shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-10 rounded-full ${t.card === 'nubank' ? 'bg-[#8a05be]' : t.card === 'c6' ? 'bg-slate-500' : 'bg-emerald-500'}`}></div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-200 capitalize">
-                      {t.type === 'recorrente' && <Repeat size={12} className="inline text-purple-400 mr-1" />}
-                      {t.desc}
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
-                      {t.rawDate.split('-').reverse().join('/')} 
-                      {t.status === 'pago' ? <span className="bg-emerald-500/20 text-emerald-400 px-1 rounded ml-2">PAGO</span> : ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className={`font-extrabold text-base tracking-tight ${t.type === 'ganho' ? 'text-emerald-400' : t.type === 'aporte' ? 'text-amber-400' : 'text-slate-100'}`}>
-                    {t.type === 'ganho' || t.type === 'aporte' ? '+' : '-'} R$ {t.amount.toFixed(2)}
-                  </span>
-                  <div className="flex gap-3 mt-1">
-                    <button onClick={() => openEditModal(t)} className="text-slate-500 hover:text-blue-400 transition"><Edit2 size={14} /></button>
-                    <button onClick={() => handleDelete(t)} className="text-slate-500 hover:text-red-400 transition"><Trash2 size={14} /></button>
-                  </div>
-                </div>
+        {viewMode === 'dashboard' && (
+          <div className="p-4 mt-2">
+            <section className="bg-blue-950/30 border border-blue-900/50 p-5 rounded-2xl shadow-lg relative overflow-hidden flex justify-between items-center mb-6 mt-2">
+              <div>
+                <p className="text-[10px] text-blue-400 font-bold uppercase mb-1 tracking-wider">Falta para Quitar</p>
+                <p className="text-2xl font-extrabold text-white">R$ {remainingTargetReais.toFixed(2)}</p>
               </div>
-            ))}
-            
-            {currentViewTransactions.length === 0 && (
-              <div className="text-center py-10 border border-dashed border-slate-800 rounded-2xl mt-6">
-                <p className="text-slate-500 text-sm">Nenhuma movimentação nesta fatura.</p>
+              <ArrowRight className="text-blue-500/50" />
+              <div className="text-right">
+                <p className="text-[10px] text-blue-400 font-bold uppercase mb-1 tracking-wider">Meta Diária</p>
+                <p className="text-2xl font-extrabold text-white">{requiredKm} <span className="text-sm text-blue-200 font-normal">km</span></p>
               </div>
-            )}
-          </div>
-        </div>
+            </section>
 
-        {/* MENU INFERIOR FLUTUANTE */}
+            <div className="flex justify-between items-end mb-4 px-1">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Lançamentos</h3>
+              <div className="flex gap-2">
+                <button onClick={() => setHistoryFilter('all')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'all' ? 'bg-slate-700 text-white' : 'border-slate-800 text-slate-500'}`}>Tudo</button>
+                <button onClick={() => setHistoryFilter('nubank')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'nubank' ? 'bg-[#8a05be]/20 text-[#8a05be]' : 'border-slate-800 text-slate-500'}`}>Nu</button>
+                <button onClick={() => setHistoryFilter('c6')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'c6' ? 'bg-slate-700 text-white' : 'border-slate-800 text-slate-500'}`}>C6</button>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {filteredHistory.map(t => (
+                <div key={t.id} className="bg-slate-900 border border-slate-800/50 p-4 rounded-2xl flex justify-between items-center shadow-sm">
+                  <div className="flex items-center gap-3 w-2/3">
+                    <div className={`w-1.5 h-10 rounded-full ${t.card === 'nubank' ? 'bg-[#8a05be]' : t.card === 'c6' ? 'bg-slate-500' : 'bg-emerald-500'}`}></div>
+                    <div className="truncate w-full">
+                      <p className="text-sm font-bold text-slate-200 capitalize truncate">
+                        {t.type === 'recorrente' && <Repeat size={12} className="inline text-purple-400 mr-1" />}
+                        {t.desc}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {t.rawDate.split('-').reverse().join('/')} 
+                        {t.status === 'pago' ? <span className="bg-emerald-500/20 text-emerald-400 px-1 rounded ml-2">PAGO</span> : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`font-extrabold text-[15px] tracking-tight ${t.type === 'ganho' ? 'text-emerald-400' : t.type === 'aporte' ? 'text-amber-400' : 'text-slate-100'}`}>
+                      {t.type === 'ganho' || t.type === 'aporte' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                    </span>
+                    <div className="flex gap-3 mt-1">
+                      <button onClick={() => openEditModal(t)} className="text-slate-500 hover:text-blue-400 transition"><Edit2 size={14} /></button>
+                      <button onClick={() => handleDelete(t)} className="text-slate-500 hover:text-red-400 transition"><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {filteredHistory.length === 0 && (
+                <div className="text-center py-10 border border-dashed border-slate-800 rounded-2xl mt-6">
+                  <p className="text-slate-500 text-sm">Nenhuma movimentação nesta fatura.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'reports' && (
+          <div id="report-content" className="p-4 mt-2 space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold text-slate-100">Visão Geral</h2>
+              <button onClick={handleDownloadPDF} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors">
+                <Download size={16} /> Baixar Relatório
+              </button>
+            </div>
+            
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={getMonthlyEvolution()}>
+                  <XAxis dataKey="name" stroke="#475569" fontSize={11} tickMargin={10} />
+                  <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff'}} />
+                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar dataKey="Uber" fill="#34d399" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="Aportes" fill="#fbbf24" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="Despesas" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <section>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Configuração de Motor</h3>
+              <div className="flex gap-4 mb-4">
+                 <div className="flex-1 bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">R$/Litro</label>
+                   <input type="number" step="0.01" value={fuelPrice} onChange={(e) => setFuelPrice(e.target.value)} className="w-full bg-transparent text-lg font-bold outline-none text-slate-200" />
+                 </div>
+                 <div className="flex-1 bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                   <label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Combustível</label>
+                   <select value={fuelType} onChange={(e) => setFuelType(e.target.value as any)} className="w-full bg-transparent text-lg font-bold outline-none text-slate-200">
+                     <option value="alcool">Álcool</option>
+                     <option value="gasolina">Gasolina</option>
+                   </select>
+                 </div>
+              </div>
+              <div className="flex gap-4">
+                 <div className="flex-1 bg-slate-900 border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+                   <label className="text-[10px] text-slate-500 font-bold uppercase block">Km/L (Álc)</label>
+                   <input type="number" step="0.1" value={efficiencyAlcool} onChange={(e) => setEfficiencyAlcool(e.target.value)} className="w-16 bg-transparent text-right text-sm font-bold outline-none text-slate-200 border-b border-slate-700" />
+                 </div>
+                 <div className="flex-1 bg-slate-900 border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+                   <label className="text-[10px] text-slate-500 font-bold uppercase block">Km/L (Gas)</label>
+                   <input type="number" step="0.1" value={efficiencyGasolina} onChange={(e) => setEfficiencyGasolina(e.target.value)} className="w-16 bg-transparent text-right text-sm font-bold outline-none text-slate-200 border-b border-slate-700" />
+                 </div>
+              </div>
+            </section>
+          </div>
+        )}
+
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur-md border border-slate-700 p-2 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex gap-2 z-40">
           <button onClick={() => setActiveModal('ganho')} className="bg-emerald-500/20 text-emerald-400 p-3 rounded-full hover:bg-emerald-500/30 transition"><DollarSign size={20} /></button>
           <button onClick={() => setActiveModal('combustivel')} className="bg-orange-500/20 text-orange-400 p-3 rounded-full hover:bg-orange-500/30 transition"><Fuel size={20} /></button>
@@ -444,18 +567,18 @@ export default function Dashboard() {
               )}
 
               <div className="mb-4">
-                <label className="text-xs text-slate-400 mb-1 block">Data Base (Compra)</label>
+                <label className="text-xs text-slate-400 mb-1 block">Data da Compra</label>
                 <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} required className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-slate-200 outline-none focus:border-blue-500" />
               </div>
 
               <div className="mb-6">
-                <label className="text-xs text-slate-400 mb-1 block">{editType === 'despesa' && installments !== '1' ? 'Valor TOTAL da Compra (R$)' : 'Valor (R$)'}</label>
+                <label className="text-xs text-slate-400 mb-1 block">{editType === 'despesa' && installments !== '1' ? 'Valor TOTAL da Compra (R$)' : 'Valor da Parcela/Mês (R$)'}</label>
                 <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-slate-200 text-2xl font-bold outline-none focus:border-blue-500" />
               </div>
 
               {editModalTx.dbTable === 'expenses' && editType === 'despesa' && (
                 <div className="mb-6">
-                  <label className="text-xs text-slate-400 mb-1 block">Recalcular Parcelas?</label>
+                  <label className="text-xs text-slate-400 mb-1 block">O sistema vai dividir sozinho:</label>
                   <select value={installments} onChange={(e) => setInstallments(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-slate-200 outline-none focus:border-blue-500">
                     <option value="1">Manter única (1x)</option>
                     {Array.from({ length: 35 }, (_, i) => i + 2).map(n => (<option key={n} value={n}>Dividir em {n}x</option>))}
@@ -468,7 +591,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* MODAL PADRÃO DE LANÇAMENTOS */}
+        {/* MODAL DE INSERÇÃO */}
         {activeModal && !editModalTx && (
           <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
             <form onSubmit={handleSave} className="bg-slate-900 border border-slate-700 p-6 rounded-3xl w-full max-w-sm shadow-2xl my-auto">
@@ -478,6 +601,26 @@ export default function Dashboard() {
                 </h3>
                 <button type="button" onClick={closeModal} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={24}/></button>
               </div>
+
+              {/* AQUI ESTÁ A CORREÇÃO DA TELA DE PAGAMENTO */}
+              {activeModal !== 'ganho' && activeModal !== 'combustivel' && (
+                <div className="mb-4">
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    {activeModal === 'pagamento' ? 'Qual cartão você vai pagar?' : 'Cartão'}
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setCard('nubank')} className={`flex-1 p-3 rounded-xl border font-bold text-sm transition ${card === 'nubank' ? 'bg-[#8a05be]/20 border-[#8a05be] text-[#8a05be]' : 'bg-slate-950 border-slate-700 text-slate-500'}`}>Nubank</button>
+                    <button type="button" onClick={() => setCard('c6')} className={`flex-1 p-3 rounded-xl border font-bold text-sm transition ${card === 'c6' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-500'}`}>C6 Bank</button>
+                  </div>
+                </div>
+              )}
+              
+              {activeModal === 'pagamento' && (
+                <div className="mb-4 p-3 bg-slate-950 rounded-xl border border-slate-800 text-center">
+                   <p className="text-xs text-slate-500 uppercase">Fatura de {getMonthLabel(activeMonthStr)} ({card})</p>
+                   <p className="text-xl font-bold text-slate-200">R$ {(card === 'nubank' ? pendingNubank : pendingC6).toFixed(2)}</p>
+                </div>
+              )}
 
               {activeModal === 'ganho' && (
                 <div className="mb-4">
@@ -495,35 +638,15 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {activeModal !== 'ganho' && activeModal !== 'pagamento' && (
-                <div className="mb-4">
-                  <label className="text-xs text-slate-400 mb-1 block">Cartão</label>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setCard('nubank')} className={`flex-1 p-3 rounded-xl border font-bold text-sm transition ${card === 'nubank' ? 'bg-[#8a05be]/20 border-[#8a05be] text-[#8a05be]' : 'bg-slate-950 border-slate-700 text-slate-500'}`}>Nubank</button>
-                    <button type="button" onClick={() => setCard('c6')} className={`flex-1 p-3 rounded-xl border font-bold text-sm transition ${card === 'c6' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-500'}`}>C6 Bank</button>
-                  </div>
-                </div>
-              )}
-              
-              {activeModal === 'pagamento' && (
-                <div className="mb-4">
-                  <label className="text-xs text-slate-400 mb-1 block">Qual cartão você pagou?</label>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setCard('nubank')} className={`flex-1 p-3 rounded-xl border font-bold text-sm transition ${card === 'nubank' ? 'bg-[#8a05be]/20 border-[#8a05be] text-[#8a05be]' : 'bg-slate-950 border-slate-700 text-slate-500'}`}>Nubank</button>
-                    <button type="button" onClick={() => setCard('c6')} className={`flex-1 p-3 rounded-xl border font-bold text-sm transition ${card === 'c6' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-500'}`}>C6 Bank</button>
-                  </div>
-                </div>
-              )}
-
               {activeModal !== 'pagamento' && (
                 <div className="mb-4">
-                  <label className="text-xs text-slate-400 mb-1 block">Data da Compra</label>
+                  <label className="text-xs text-slate-400 mb-1 block">Data da Transação</label>
                   <input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} required className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-slate-200 outline-none focus:border-blue-500" />
                 </div>
               )}
 
               <div className="mb-4">
-                <label className="text-xs text-slate-400 mb-1 block">{activeModal === 'pagamento' ? 'Valor PAGO da Fatura (R$)' : (activeModal === 'despesa' && installments !== '1' ? 'Valor TOTAL da Compra (R$)' : 'Valor (R$)')}</label>
+                <label className="text-xs text-slate-400 mb-1 block">{activeModal === 'pagamento' ? 'Valor Pago (R$)' : (activeModal === 'despesa' && installments !== '1' ? 'Valor TOTAL da Compra (R$)' : 'Valor (R$)')}</label>
                 <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-slate-200 text-2xl font-bold outline-none focus:border-blue-500" placeholder="0.00" />
               </div>
 
