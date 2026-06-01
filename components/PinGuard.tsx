@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Lock } from 'lucide-react';
 
 export default function PinGuard({ children }: { children: React.ReactNode }) {
@@ -7,47 +7,47 @@ export default function PinGuard({ children }: { children: React.ReactNode }) {
   const [isAuth, setIsAuth] = useState(false);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    // Busca o PIN. Se não existir, define "123456" para o primeiro acesso
-    const saved = localStorage.getItem('user_pin');
-    if (!saved) localStorage.setItem('user_pin', '200407'); 
-  }, []);
+  // Autenticação blindada direta na constante
+  const MASTER_PIN = '200407';
 
-  const checkPin = (val: string) => {
-    const numericVal = val.replace(/\D/g, '');
-    setPin(numericVal);
-    
-    if (numericVal.length === 6) {
-      if (numericVal === localStorage.getItem('user_pin')) {
-        setIsAuth(true);
-      } else {
-        setError(true);
-        setTimeout(() => { setPin(''); setError(false); }, 1000);
-      }
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === MASTER_PIN) {
+      setIsAuth(true);
+      setError(false);
+    } else {
+      setError(true);
+      setPin('');
     }
   };
 
-  if (!isAuth) {
-    return (
-      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 z-50">
-        <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 flex flex-col items-center shadow-2xl">
-          <Lock className={`w-12 h-12 mb-6 transition-colors ${error ? 'text-red-500 animate-bounce' : 'text-blue-500'}`} />
-          <h1 className="text-slate-100 text-xl font-bold mb-2">Acesso Restrito</h1>
-          <p className="text-slate-400 text-sm mb-8 text-center">Digite seu PIN de 6 dígitos para acessar a administração financeira.</p>
-          
-          <input 
-            type="password" 
+  if (isAuth) return <>{children}</>;
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col items-center">
+        <div className="bg-blue-500/20 p-4 rounded-full mb-6">
+          <Lock className="text-blue-500" size={32} />
+        </div>
+        <h1 className="text-xl font-bold text-slate-100 mb-2">Acesso Restrito</h1>
+        <p className="text-sm text-slate-400 mb-8 text-center">Insira seu PIN de segurança para acessar o financeiro.</p>
+        
+        <form onSubmit={handleLogin} className="w-full flex flex-col gap-4">
+          <input
+            type="password"
             inputMode="numeric"
-            maxLength={6} 
+            autoFocus
             value={pin}
-            onChange={(e) => checkPin(e.target.value)}
-            className="bg-slate-950 text-slate-100 text-center text-3xl tracking-[0.5em] p-4 rounded-xl border border-slate-700 focus:border-blue-500 outline-none w-full max-w-[280px] transition-all"
+            onChange={(e) => setPin(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-4 text-center text-2xl tracking-[0.5em] text-slate-200 outline-none focus:border-blue-500 transition-colors"
             placeholder="••••••"
           />
-        </div>
+          {error && <p className="text-red-400 text-xs text-center font-bold">PIN Incorreto.</p>}
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition shadow-lg mt-2">
+            Desbloquear
+          </button>
+        </form>
       </div>
-    );
-  }
-
-  return <>{children}</>;
+    </div>
+  );
 }
