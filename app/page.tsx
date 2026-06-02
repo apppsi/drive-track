@@ -4,7 +4,7 @@ import PinGuard from '../components/PinGuard';
 import { supabase } from '../lib/supabase';
 import { 
   DollarSign, Fuel, Plus, Coffee, Repeat, X, 
-  CreditCard, Edit2, Trash2, ChevronLeft, ChevronRight, CalendarSearch, TrendingUp, List, Clock, ArrowRight, BarChart3, Download
+  CreditCard, Edit2, Trash2, ChevronLeft, ChevronRight, CalendarSearch, TrendingUp, List, Clock, ArrowRight, BarChart3, Download, Search
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import html2canvas from 'html2canvas';
@@ -45,7 +45,8 @@ export default function Dashboard() {
   const [installments, setInstallments] = useState('1');
   const [incomeType, setIncomeType] = useState<'uber' | 'aporte'>('uber');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'nubank' | 'c6' | 'outros'>('all');
-  
+  const [searchTerm, setSearchTerm] = useState(''); // ESTADO DA PESQUISA LIVRE
+
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [editType, setEditType] = useState<'despesa' | 'recorrente'>('despesa');
 
@@ -103,6 +104,8 @@ export default function Dashboard() {
         const accountData: any = e.accounts;
         const accountName = Array.isArray(accountData) ? accountData[0]?.name : accountData?.name;
         const cardName = accountName?.toLowerCase().includes('nubank') ? 'nubank' : 'c6';
+        
+        // REGRAS DE CORTE: Nubank (Dia 10) | C6 Bank (Dia 14)
         const threshold = cardName === 'nubank' ? 10 : 14;
         
         formattedTxs.push({
@@ -115,6 +118,7 @@ export default function Dashboard() {
 
     if (workDays) {
       workDays.forEach(w => {
+        // REGRAS DE CORTE: Entradas, Uber e Combustível (Dia 20)
         const invMonth = getInvoiceMonth(w.date, 20);
         if(w.extra_earnings > 0) formattedTxs.push({ id: `wdg_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'ganho', amount: Number(w.extra_earnings), desc: 'Ganhos Uber', rawDate: w.date, invoiceMonth: invMonth });
         if(w.aporte > 0) formattedTxs.push({ id: `wda_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'aporte', amount: Number(w.aporte), desc: 'Aporte Externo', rawDate: w.date, invoiceMonth: invMonth });
@@ -350,12 +354,25 @@ export default function Dashboard() {
   const netProfitPerKm = numFuelPrice > 0 && currentEfficiency > 0 ? 2.00 - (numFuelPrice / currentEfficiency) : 0;
   const requiredKm = remainingTargetReais > 0 && netProfitPerKm > 0 ? Math.ceil(remainingTargetReais / netProfitPerKm) : 0;
 
+  // LÓGICA DE FILTRO ATUALIZADA (CARTÃO + PESQUISA LIVRE)
   const filteredHistory = currentViewTransactions.filter(t => {
     if (historyFilter === 'nubank' && t.card !== 'nubank') return false;
     if (historyFilter === 'c6' && t.card !== 'c6') return false;
     if (historyFilter === 'outros' && t.card) return false;
+    
+    if (searchTerm) {
+      const s = searchTerm.toLowerCase();
+      if (!t.desc?.toLowerCase().includes(s) && !t.type?.toLowerCase().includes(s)) return false;
+    }
+
     return true;
   });
+
+  // MATEMÁTICA DO TOTAL PESQUISADO
+  const isSearching = searchTerm.trim().length > 0;
+  const searchTotal = isSearching 
+    ? filteredHistory.reduce((acc, t) => acc + t.amount, 0)
+    : 0;
 
   return (
     <PinGuard>
@@ -435,6 +452,26 @@ export default function Dashboard() {
                 <button onClick={() => setHistoryFilter('outros')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'outros' ? 'bg-emerald-500/20 text-emerald-400' : 'border-slate-800 text-slate-500'}`}>Ganhos</button>
               </div>
             </div>
+
+            {/* BARRA DE PESQUISA ADICIONADA */}
+            <div className="relative mb-3">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600" />
+              <input 
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Pesquisar por Uber, Mercado, etc..."
+                className="w-full bg-slate-900/50 border border-slate-800 rounded-full py-2.5 pl-10 pr-4 text-sm text-slate-200 outline-none focus:border-blue-700 shadow-inner"
+              />
+            </div>
+
+            {/* CAIXA DE TOTAL PESQUISADO ADICIONADA */}
+            {isSearching && (
+              <div className="bg-blue-600 border border-blue-500 p-3 rounded-2xl mb-3 shadow-lg flex justify-between items-center transition-all">
+                <p className="text-[10px] text-white font-bold uppercase tracking-wider">Total Encontrado</p>
+                <p className="text-xl font-extrabold text-white">R$ {searchTotal.toFixed(2)}</p>
+              </div>
+            )}
             
             <div className="space-y-3 mb-8 max-h-[45vh] overflow-y-auto pr-2 pb-2">
               {filteredHistory.map(t => (
@@ -466,7 +503,7 @@ export default function Dashboard() {
               
               {filteredHistory.length === 0 && (
                 <div className="text-center py-10 border border-dashed border-slate-800 rounded-2xl mt-6">
-                  <p className="text-slate-500 text-sm">Nenhuma movimentação nesta fatura.</p>
+                  <p className="text-slate-500 text-sm">Nenhum lançamento corresponde à busca.</p>
                 </div>
               )}
             </div>
