@@ -431,10 +431,11 @@ export default function Dashboard() {
                 <button onClick={() => setHistoryFilter('all')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'all' ? 'bg-slate-700 text-white' : 'border-slate-800 text-slate-500'}`}>Tudo</button>
                 <button onClick={() => setHistoryFilter('nubank')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'nubank' ? 'bg-[#8a05be]/20 text-[#8a05be]' : 'border-slate-800 text-slate-500'}`}>Nu</button>
                 <button onClick={() => setHistoryFilter('c6')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'c6' ? 'bg-slate-700 text-white' : 'border-slate-800 text-slate-500'}`}>C6</button>
+                <button onClick={() => setHistoryFilter('outros')} className={`text-[9px] uppercase font-bold px-2 py-1 rounded border ${historyFilter === 'outros' ? 'bg-emerald-500/20 text-emerald-400' : 'border-slate-800 text-slate-500'}`}>Ganhos</button>
               </div>
             </div>
             
-            <div className="space-y-3">
+            <div className="space-y-3 mb-8">
               {filteredHistory.map(t => (
                 <div key={t.id} className="bg-slate-900 border border-slate-800/50 p-4 rounded-2xl flex justify-between items-center shadow-sm">
                   <div className="flex items-center gap-3 w-2/3">
@@ -468,33 +469,9 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {viewMode === 'reports' && (
-          <div id="report-content" className="p-4 mt-2 space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-bold text-slate-100">Visão Geral</h2>
-              <button onClick={handleDownloadPDF} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors">
-                <Download size={16} /> Baixar Relatório
-              </button>
-            </div>
-            
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getMonthlyEvolution()}>
-                  <XAxis dataKey="name" stroke="#475569" fontSize={11} tickMargin={10} />
-                  <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff'}} />
-                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Bar dataKey="Uber" fill="#34d399" radius={[4, 4, 0, 0]} maxBarSize={30} />
-                  <Bar dataKey="Aportes" fill="#fbbf24" radius={[4, 4, 0, 0]} maxBarSize={30} />
-                  <Bar dataKey="Despesas" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <section>
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Configuração de Motor</h3>
+            <section className="mt-6 border-t border-slate-800 pt-6">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Configuração de Pista</h3>
               <div className="flex gap-4 mb-4">
                  <div className="flex-1 bg-slate-900 border border-slate-800 p-4 rounded-xl">
                    <label className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">R$/Litro</label>
@@ -519,6 +496,31 @@ export default function Dashboard() {
                  </div>
               </div>
             </section>
+
+          </div>
+        )}
+
+        {viewMode === 'reports' && (
+          <div id="report-content" className="p-4 mt-2 space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold text-slate-100">Visão Geral</h2>
+              <button onClick={handleDownloadPDF} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors">
+                <Download size={16} /> Baixar Relatório
+              </button>
+            </div>
+            
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={getMonthlyEvolution()}>
+                  <XAxis dataKey="name" stroke="#475569" fontSize={11} tickMargin={10} />
+                  <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff'}} />
+                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar dataKey="Uber" fill="#34d399" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="Aportes" fill="#fbbf24" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="Despesas" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
 
