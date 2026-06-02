@@ -435,7 +435,8 @@ export default function Dashboard() {
               </div>
             </div>
             
-            <div className="space-y-3 mb-8">
+            {/* ADICIONADA A BARRA DE ROLAGEM AQUI (max-h-[45vh] overflow-y-auto) */}
+            <div className="space-y-3 mb-8 max-h-[45vh] overflow-y-auto pr-2 pb-2">
               {filteredHistory.map(t => (
                 <div key={t.id} className="bg-slate-900 border border-slate-800/50 p-4 rounded-2xl flex justify-between items-center shadow-sm">
                   <div className="flex items-center gap-3 w-2/3">
