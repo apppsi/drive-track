@@ -4,7 +4,7 @@ import PinGuard from '../components/PinGuard';
 import { supabase } from '../lib/supabase';
 import { 
   DollarSign, Fuel, Plus, Coffee, Repeat, X, 
-  CreditCard, Edit2, Trash2, ChevronLeft, ChevronRight, CalendarSearch, TrendingUp, List, Clock, ArrowRight
+  CreditCard, Edit2, Trash2, ChevronLeft, ChevronRight, CalendarSearch, TrendingUp, List, Clock, ArrowRight, BarChart3, Download
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import html2canvas from 'html2canvas';
@@ -196,6 +196,7 @@ export default function Dashboard() {
       } else {
         const acc = dbAccounts.find(a => a.name.toLowerCase().includes(card));
         const numInst = editType === 'recorrente' ? 120 : Number(installments);
+        
         const baseAmount = editType === 'despesa' && numInst > 1 ? Number(amount) / numInst : Number(amount);
         
         if (editModalTx.desc?.match(/\(\d+\/\d+\)$/)) {
@@ -336,7 +337,6 @@ export default function Dashboard() {
     pdf.save(`DriveTrack-Relatorio-${formattedDate.replace(/\//g, '-')}.pdf`);
   };
 
-  // Filtro Global da View Atual
   const currentViewTransactions = transactions.filter(t => t.invoiceMonth === activeMonthStr);
   const pendingNubank = currentViewTransactions.filter(t => t.card === 'nubank' && t.type !== 'ganho' && t.type !== 'aporte' && t.status === 'pendente').reduce((acc, t) => acc + t.amount, 0);
   const pendingC6 = currentViewTransactions.filter(t => t.card === 'c6' && t.type !== 'ganho' && t.type !== 'aporte' && t.status === 'pendente').reduce((acc, t) => acc + t.amount, 0);
@@ -602,7 +602,6 @@ export default function Dashboard() {
                 <button type="button" onClick={closeModal} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={24}/></button>
               </div>
 
-              {/* AQUI ESTÁ A CORREÇÃO DA TELA DE PAGAMENTO */}
               {activeModal !== 'ganho' && activeModal !== 'combustivel' && (
                 <div className="mb-4">
                   <label className="text-xs text-slate-400 mb-1 block">
