@@ -61,13 +61,14 @@ export default function Dashboard() {
     setActiveMonthStr(`${yyyy}-${mm}`);
   }, []);
 
+  // Motor Matemático Baseado na Data de CORTE
   const getInvoiceMonth = (dateStr: string, thresholdDay: number) => {
     const [yStr, mStr, dStr] = dateStr.split('T')[0].split('-');
     let y = parseInt(yStr, 10);
     let m = parseInt(mStr, 10);
     const d = parseInt(dStr, 10);
 
-    if (d >= thresholdDay) {
+    if (d > thresholdDay) {
         m += 1;
         if (m > 12) { m = 1; y += 1; }
     }
@@ -102,7 +103,9 @@ export default function Dashboard() {
         const accountData: any = e.accounts;
         const accountName = Array.isArray(accountData) ? accountData[0]?.name : accountData?.name;
         const cardName = accountName?.toLowerCase().includes('nubank') ? 'nubank' : 'c6';
-        const threshold = cardName === 'nubank' ? 17 : 14;
+        
+        // REGRAS DE CORTE: Nubank (Dia 10) | C6 Bank (Dia 14)
+        const threshold = cardName === 'nubank' ? 10 : 14;
         
         formattedTxs.push({
           id: `exp_${e.id}`, dbId: e.id, dbTable: 'expenses', type: e.category, amount: Number(e.amount),
@@ -114,7 +117,8 @@ export default function Dashboard() {
 
     if (workDays) {
       workDays.forEach(w => {
-        const invMonth = getInvoiceMonth(w.date, 31);
+        // REGRAS DE CORTE: Entradas, Uber e Combustível (Dia 20)
+        const invMonth = getInvoiceMonth(w.date, 20);
         if(w.extra_earnings > 0) formattedTxs.push({ id: `wdg_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'ganho', amount: Number(w.extra_earnings), desc: 'Ganhos Uber', rawDate: w.date, invoiceMonth: invMonth });
         if(w.aporte > 0) formattedTxs.push({ id: `wda_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'aporte', amount: Number(w.aporte), desc: 'Aporte Externo', rawDate: w.date, invoiceMonth: invMonth });
         if(w.fuel_price > 0) formattedTxs.push({ id: `wdc_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'combustivel', amount: Number(w.fuel_price), desc: 'Abastecimento', rawDate: w.date, invoiceMonth: invMonth });
@@ -251,7 +255,7 @@ export default function Dashboard() {
 
         if (paidValue < invoiceTotal) {
           const rolloverAmount = invoiceTotal - paidValue;
-          const threshold = card === 'nubank' ? 17 : 14;
+          const threshold = card === 'nubank' ? 10 : 14;
           const [yStr, mStr] = activeMonthStr.split('-');
           
           const nextDateStr = `${yStr}-${mStr}-${String(threshold + 2).padStart(2, '0')}`;
@@ -388,18 +392,18 @@ export default function Dashboard() {
                   <div className="absolute top-0 left-0 w-1 h-full bg-[#8a05be]"></div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fatura Nubank</p>
                   <p className="text-xl font-bold text-[#8a05be]">R$ {pendingNubank.toFixed(2)}</p>
-                  <p className="text-[9px] text-slate-500 mt-1">Corta dia 17</p>
+                  <p className="text-[9px] text-slate-500 mt-1">Corta dia 10 • Vence dia 17</p>
                 </div>
                 <div className="bg-slate-800/50 border border-slate-700/50 p-4 rounded-2xl relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-slate-500"></div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fatura C6 Bank</p>
                   <p className="text-xl font-bold text-slate-300">R$ {pendingC6.toFixed(2)}</p>
-                  <p className="text-[9px] text-slate-500 mt-1">Corta dia 14</p>
+                  <p className="text-[9px] text-slate-500 mt-1">Corta dia 14 • Vence dia 20</p>
                 </div>
               </div>
               <div className="mt-3 bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex justify-between items-center">
                  <div>
-                   <p className="text-[10px] text-emerald-400/80 font-bold uppercase mb-1">Entradas Registradas</p>
+                   <p className="text-[10px] text-emerald-400/80 font-bold uppercase mb-1">Entradas (Corte Dia 20)</p>
                    <p className="text-lg font-bold text-emerald-400">R$ {(totalUber + totalAporte).toFixed(2)}</p>
                  </div>
                  <div className="text-right">
@@ -435,7 +439,6 @@ export default function Dashboard() {
               </div>
             </div>
             
-            {/* ADICIONADA A BARRA DE ROLAGEM AQUI (max-h-[45vh] overflow-y-auto) */}
             <div className="space-y-3 mb-8 max-h-[45vh] overflow-y-auto pr-2 pb-2">
               {filteredHistory.map(t => (
                 <div key={t.id} className="bg-slate-900 border border-slate-800/50 p-4 rounded-2xl flex justify-between items-center shadow-sm">
