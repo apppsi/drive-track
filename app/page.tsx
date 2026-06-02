@@ -61,13 +61,13 @@ export default function Dashboard() {
     setActiveMonthStr(`${yyyy}-${mm}`);
   }, []);
 
-  // Motor Matemático Baseado na Data de CORTE
   const getInvoiceMonth = (dateStr: string, thresholdDay: number) => {
     const [yStr, mStr, dStr] = dateStr.split('T')[0].split('-');
     let y = parseInt(yStr, 10);
     let m = parseInt(mStr, 10);
     const d = parseInt(dStr, 10);
 
+    // Lógica Exata: Compra no dia do corte (ex: 10) fica no mês. Dia seguinte (11) pula.
     if (d > thresholdDay) {
         m += 1;
         if (m > 12) { m = 1; y += 1; }
@@ -103,8 +103,6 @@ export default function Dashboard() {
         const accountData: any = e.accounts;
         const accountName = Array.isArray(accountData) ? accountData[0]?.name : accountData?.name;
         const cardName = accountName?.toLowerCase().includes('nubank') ? 'nubank' : 'c6';
-        
-        // REGRAS DE CORTE: Nubank (Dia 10) | C6 Bank (Dia 14)
         const threshold = cardName === 'nubank' ? 10 : 14;
         
         formattedTxs.push({
@@ -117,7 +115,6 @@ export default function Dashboard() {
 
     if (workDays) {
       workDays.forEach(w => {
-        // REGRAS DE CORTE: Entradas, Uber e Combustível (Dia 20)
         const invMonth = getInvoiceMonth(w.date, 20);
         if(w.extra_earnings > 0) formattedTxs.push({ id: `wdg_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'ganho', amount: Number(w.extra_earnings), desc: 'Ganhos Uber', rawDate: w.date, invoiceMonth: invMonth });
         if(w.aporte > 0) formattedTxs.push({ id: `wda_${w.id}`, dbId: w.id, dbTable: 'work_days', type: 'aporte', amount: Number(w.aporte), desc: 'Aporte Externo', rawDate: w.date, invoiceMonth: invMonth });
